@@ -1,0 +1,9 @@
+The original Sport Emotional Stroop Task-English (SEST-E) was originally coded as an .iqx file using Inquisit Lab 4 by millisecond.
+
+The estroop.iqx file can be run locally but requires download and instal the Free Inquisit 4 Player app.
+Download the Free Inquisit 4 Player app here: https://www.millisecond.com/download/inquisitweb4
+
+Editing of estroop.iqx file requires download of the archived Inquisit Lab 4 for Windows or Mac from: https://www.millisecond.com/download/archives
+Inquisit Lab 4 can be used for a free trial period. Alternatively, purchase of the latest Inquisit Lab license might allow upgrading estroop.iqx, but this has not been tested.
+
+The millisecond website is: https://www.millisecond.com/
