@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sport Emotional Stroop Task | High-Precision Timing</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            background: white;
+            overflow: hidden;
+        }
+        #experiment-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+        }
+        .stimulus {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 7vh;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .reminder {
+            position: fixed;
+            top: 20%;
+            font-size: 2.5vh;
+            font-weight: bold;
+            transform: translateY(-50%);
+            -webkit-text-stroke: 0.5px black;
+            text-stroke: 0.5px black;
+            font-family: 'Arial', sans-serif;
+        }
+        .reminder-red { left: 20%; color: red; }
+        .reminder-green { left: 40%; color: #4CAF50; }
+        .reminder-blue { left: 60%; color: blue; }
+        .reminder-yellow { left: 80%; color: yellow; -webkit-text-stroke: 0.5px black; text-stroke: 0.5px black; }
+        .fixation {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8vh;
+            font-weight: bold;
+            color: black;
+        }
+        .error-x {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10vh;
+            font-weight: bold;
+            color: red;
+        }
+        .instructions, .subject-input {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60%;
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 2.5vh;
+            line-height: 1.6;
+            z-index: 10;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            font-family: 'Arial', sans-serif;
+        }
+        .subject-input {
+            width: 50%;
+        }
+        .subject-input input {
+            font-size: 2vh;
+            padding: 10px;
+            margin: 20px 0;
+            width: 200px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+        .subject-input button, button {
+            font-size: 2vh;
+            padding: 10px 20px;
+            margin-top: 20px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .subject-input button:hover, button:hover {
+            background: #45a049;
+        }
+        .hidden {
+            display: none;
+        }
+        .feedback-note {
+            position: fixed;
+            bottom: 5%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.8vh;
+            color: #555;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+<div id="experiment-container"></div>
+
+<script>
+    (function(){
+        // ============================================================
+        // CONFIGURATION
+        // ============================================================
+        const CONFIG = {
+            fixationDuration: 500,          // ms (duration >200ms, setTimeout is adequate)
+            keyRed: "d",
+            keyGreen: "f",
+            keyBlue: "j",
+            keyYellow: "k",
+            colorDisplayMap: {               // for stimulus text color
+                "d": "red",
+                "f": "#4CAF50",              // Lighter green as requested
+                "j": "blue",
+                "k": "yellow"
+            },
+            colorNameMap: {                  // human-readable color names
+                "d": "red",
+                "f": "green",
+                "j": "blue",
+                "k": "yellow"
+            }
+        };
+
+        // ============================================================
+        // STIMULI LISTS (Sport Emotional Stroop)
+        // ============================================================
+        const positiveWords = [
+            "awe", "calm", "elevate", "esteem", "focus", "gifted", "home", "kickoff",
+            "mastery", "medal", "perform", "persist", "podium", "poise", "reflex",
+            "skilled", "soar", "stamina", "strong", "unite"
+        ];
+        const negativeWords = [
+            "agony", "anxiety", "brawl", "defeat", "envy", "erratic", "fail", "fearful",
+            "foul", "fumble", "furious", "harass", "illicit", "injure", "outrage",
+            "rant", "rupture", "sprain", "tamper", "tantrum"
+        ];
+        const neutralWords = [
+            "buzzer", "catcher", "clutch", "crowd", "endure", "evade", "exert", "flashy",
+            "grit", "kicker", "noisy", "obsess", "pivot", "rival", "tackle", "tempo",
+            "urgency", "visitor", "ankle", "fixture"
+        ];
+        const practiceWords = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+        
+        // Color palettes: display colors (actual CSS) and readable names
+        const displayColors = ["red", "#4CAF50", "blue", "yellow"];
+        const colorNamesArr = ["red", "green", "blue", "yellow"];
+
+        // Data containers
+        let experimentData = [];     // raw trial data with component latencies
+        let subjectId = null;
+        
+        // Summary accumulators (for final display only)
+        let summaryStats = {
+            condition: null,
+            completed: 0,
+            correct_neutral: 0, correct_negative: 0, correct_positive: 0,
+            sumRT_cognitive_neu: 0, sumRT_cognitive_neg: 0, sumRT_cognitive_pos: 0,
+            trialCount_neu: 0, trialCount_neg: 0, trialCount_pos: 0
+        };
+
+        // Helper: shuffle array (Fisher-Yates)
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        // Create fully balanced trial set: each word appears once in each color (4 colors)
+        function createTrials(wordList, conditionCode, conditionName) {
+            let trials = [];
+            for (let word of wordList) {
+                // Combine display color and human-readable name
+                let colorOptions = [];
+                for (let idx = 0; idx < displayColors.length; idx++) {
+                    colorOptions.push({
+                        displayColor: displayColors[idx],
+                        colorName: colorNamesArr[idx]
+                    });
+                }
+                // Shuffle color order so that color sequence is randomized across words
+                let shuffledColors = shuffleArray([...colorOptions]);
+                for (let col of shuffledColors) {
+                    trials.push({
+                        word: word,
+                        displayColor: col.displayColor,
+                        colorName: col.colorName,
+                        conditionCode: conditionCode,
+                        conditionName: conditionName,
+                        targetKey: Object.keys(CONFIG.colorNameMap).find(key => CONFIG.colorNameMap[key] === col.colorName)
+                    });
+                }
+            }
+            // Shuffle overall trial order for the block
+            return shuffleArray(trials);
+        }
+
+        // DOM elements
+        const container = document.getElementById("experiment-container");
+
+        // Helper: clear container
+        function clearContainer() {
+            container.innerHTML = "";
+        }
+
+        // Add color reminders (with outlined yellow, lighter green)
+        function addReminders() {
+            const reminders = [
+                { text: `${CONFIG.keyRed.toUpperCase()} = red`, className: "reminder-red", left: "20%", color: "red" },
+                { text: `${CONFIG.keyGreen.toUpperCase()} = green`, className: "reminder-green", left: "40%", color: "#4CAF50" },
+                { text: `${CONFIG.keyBlue.toUpperCase()} = blue`, className: "reminder-blue", left: "60%", color: "blue" },
+                { text: `${CONFIG.keyYellow.toUpperCase()} = yellow`, className: "reminder-yellow", left: "80%", color: "yellow" }
+            ];
+            reminders.forEach(r => {
+                const rem = document.createElement("div");
+                rem.className = `reminder ${r.className}`;
+                rem.textContent = r.text;
+                rem.style.left = r.left;
+                rem.style.color = r.color;
+                if (r.color === "yellow") {
+                    rem.style.webkitTextStroke = "0.5px black";
+                    rem.style.textStroke = "0.5px black";
+                }
+                container.appendChild(rem);
+            });
+        }
+
+        // ---------- FIXATION: uses requestAnimationFrame for precision but duration >200ms → setTimeout is fine but we keep RAF for consistency ----------
+        function showFixation(durationMs, onComplete) {
+            clearContainer();
+            const fixationDiv = document.createElement("div");
+            fixationDiv.className = "fixation";
+            fixationDiv.textContent = "+";
+            container.appendChild(fixationDiv);
+            addReminders();
+            // For durations >200ms, standard setTimeout is acceptable, but we use performance.now() + RAF for sub-millisecond alignment if needed.
+            const start = performance.now();
+            function tick(now) {
+                if (now - start >= durationMs) {
+                    onComplete();
+                } else {
+                    requestAnimationFrame(tick);
+                }
+            }
+            requestAnimationFrame(tick);
+        }
+
+        // Error feedback (X flash) duration 400ms >200ms -> setTimeout is fine.
+        function showErrorFeedback(durationMs, onComplete) {
+            const errorDiv = document.createElement("div");
+            errorDiv.className = "error-x";
+            errorDiv.textContent = "X";
+            container.appendChild(errorDiv);
+            setTimeout(() => {
+                errorDiv.remove();
+                onComplete();
+            }, durationMs);
+        }
+
+        // ************* HIGH-PRECISION TRIAL WITH COMPONENT LATENCIES *************
+        // Implements: double requestAnimationFrame for stimulus onset, performance.now() for all RTs,
+        // records stimulusDisplayLatency (JS call -> actual paint) and response registration delay.
+        function showTrialWithComponentTiming(trial, onResponseCallback) {
+            clearContainer();
+            addReminders();
+            
+            // Create the stimulus element (but not yet painted to screen until after double RAF)
+            const wordElem = document.createElement("div");
+            wordElem.className = "stimulus";
+            wordElem.textContent = trial.word;
+            wordElem.style.color = trial.displayColor;
+            container.appendChild(wordElem);
+            
+            // --- MEASUREMENT 1: Stimulus Display Latency (JS call -> actual pixel display)
+            const jsCallTime = performance.now();   // time when we appended element
+            
+            let stimulusOnsetTime = null;            // will be set after second RAF (true display time)
+            let displayLatencyMs = null;
+            
+            // Double requestAnimationFrame to capture actual paint completion
+            let rafStep = 0;
+            
+            function waitForPaint(rafTimestamp) {
+                rafStep++;
+                if (rafStep === 1) {
+                    // First RAF: browser about to process pending paints
+                    requestAnimationFrame(waitForPaint);
+                } else if (rafStep === 2) {
+                    // Second RAF: paint has completed, stimulus is actually visible on screen
+                    stimulusOnsetTime = performance.now();
+                    displayLatencyMs = stimulusOnsetTime - jsCallTime;
+                    
+                    // Start listening for responses with high-precision timestamps
+                    let responded = false;
+                    let keyPressRawTime = null;     // time keydown event entered JS queue
+                    let keyRegistrationTime = null; // time after microtask (recording completion)
+                    
+                    const keydownHandler = (e) => {
+                        if (responded) return;
+                        const key = e.key.toLowerCase();
+                        if (key === CONFIG.keyRed || key === CONFIG.keyGreen || key === CONFIG.keyBlue || key === CONFIG.keyYellow) {
+                            responded = true;
+                            // Capture precise moment the keyboard event is handled
+                            keyPressRawTime = performance.now();
+                            
+                            // Use setTimeout with 0 to measure registration delay (event loop + logging overhead)
+                            setTimeout(() => {
+                                keyRegistrationTime = performance.now();
+                                document.removeEventListener("keydown", keydownHandler);
+                                
+                                const responseColorHuman = CONFIG.colorNameMap[key];
+                                const isCorrect = (responseColorHuman === trial.colorName);
+                                
+                                // Compute different latency components:
+                                // cognitiveRT: true time from stimulus onset to physical key press (keyPressRawTime)
+                                const cognitiveRT = keyPressRawTime - stimulusOnsetTime;
+                                // registrationDelay: delay between key press and when data recorded
+                                const registrationDelay = keyRegistrationTime - keyPressRawTime;
+                                // totalMeasuredRT: what naive code would record
+                                const totalMeasuredRT = keyRegistrationTime - stimulusOnsetTime;
+                                
+                                onResponseCallback({
+                                    correct: isCorrect,
+                                    cognitiveRT: cognitiveRT,
+                                    registrationDelay: registrationDelay,
+                                    totalMeasuredRT: totalMeasuredRT,
+                                    stimulusDisplayLatency: displayLatencyMs,
+                                    responseKey: key,
+                                    responseColor: responseColorHuman,
+                                    stimulusOnsetTimestamp: stimulusOnsetTime,
+                                    keyPressRawTimestamp: keyPressRawTime
+                                });
+                            }, 0);
+                        }
+                    };
+                    document.addEventListener("keydown", keydownHandler);
+                }
+            }
+            // Initiate double RAF chain
+            requestAnimationFrame(waitForPaint);
+        }
+
+        // ----- Instructions UI -----
+        function showInstructions(htmlContent, onComplete) {
+            clearContainer();
+            const div = document.createElement("div");
+            div.className = "instructions";
+            div.innerHTML = htmlContent + `<p><strong>Press SPACE BAR to continue</strong></p>`;
+            container.appendChild(div);
+            const keyHandler = (e) => {
+                if (e.code === "Space") {
+                    document.removeEventListener("keydown", keyHandler);
+                    onComplete();
+                }
+            };
+            document.addEventListener("keydown", keyHandler);
+        }
+
+        function showReadyScreen(onComplete) {
+            clearContainer();
+            const div = document.createElement("div");
+            div.className = "instructions";
+            div.innerHTML = `<h2>Ready?</h2><p>Press SPACE BAR when you are ready to start.</p>`;
+            container.appendChild(div);
+            const keyHandler = (e) => {
+                if (e.code === "Space") {
+                    document.removeEventListener("keydown", keyHandler);
+                    onComplete();
+                }
+            };
+            document.addEventListener("keydown", keyHandler);
+        }
+
+        function askSubjectId(onComplete) {
+            clearContainer();
+            const div = document.createElement("div");
+            div.className = "subject-input";
+            div.innerHTML = `
+                <h2>Subject Information</h2>
+                <p>Please enter your Subject ID Number.</p>
+                <p style="font-size: 1.8vh; color: #666;">(Enter 999 for test data)</p>
+                <input type="number" id="subject-id-input" placeholder="Subject ID">
+                <button id="submit-subject">Start Experiment</button>
+            `;
+            container.appendChild(div);
+            const input = document.getElementById("subject-id-input");
+            const button = document.getElementById("submit-subject");
+            const submitHandler = () => {
+                const id = parseInt(input.value);
+                if (isNaN(id)) {
+                    alert("Please enter a valid Subject ID number.");
+                    return;
+                }
+                subjectId = id;
+                onComplete();
+            };
+            button.addEventListener("click", submitHandler);
+            input.addEventListener("keypress", (e) => { if (e.key === "Enter") submitHandler(); });
+        }
+
+        // ----- Run a full block of trials (practice or test) -----
+        async function runBlock(trialsArray, blockName, blockConditionCode) {
+            let correctCount = 0;
+            let sumCognitiveRT = 0;   // use cognitiveRT for summary stats
+            
+            for (let idx = 0; idx < trialsArray.length; idx++) {
+                const trial = trialsArray[idx];
+                
+                // Fixation cross (duration 500ms)
+                await new Promise(resolve => showFixation(CONFIG.fixationDuration, resolve));
+                
+                // Run trial with high-precision component timing
+                let trialOutcome = null;
+                await new Promise(resolve => {
+                    showTrialWithComponentTiming(trial, (result) => {
+                        trialOutcome = result;
+                        resolve();
+                    });
+                });
+                
+                // If incorrect, show error feedback
+                if (!trialOutcome.correct) {
+                    await new Promise(resolve => showErrorFeedback(400, resolve));
+                }
+                
+                // Build raw data record with separate columns for stimulusDisplayLatency and registrationDelay
+                const record = {
+                    subjectId: subjectId,
+                    blockName: blockName,
+                    blockCode: blockConditionCode,
+                    trialNum: idx + 1,
+                    word: trial.word,
+                    colorName: trial.colorName,
+                    targetKey: trial.targetKey,
+                    responseKey: trialOutcome.responseKey,
+                    responseColor: trialOutcome.responseColor,
+                    correct: trialOutcome.correct ? 1 : 0,
+                    // COMPONENT LATENCY COLUMNS (requested)
+                    cognitiveRT_ms: Math.round(trialOutcome.cognitiveRT),
+                    stimulusDisplayLatency_ms: Math.round(trialOutcome.stimulusDisplayLatency),
+                    registrationDelay_ms: Math.round(trialOutcome.registrationDelay),
+                    totalMeasuredRT_ms: Math.round(trialOutcome.totalMeasuredRT),
+                    conditionCode: blockConditionCode
+                };
+                experimentData.push(record);
+                
+                if (trialOutcome.correct) {
+                    correctCount++;
+                    sumCognitiveRT += trialOutcome.cognitiveRT;
+                }
+            }
+            
+            // Update summary stats based on condition (for final report)
+            if (blockConditionCode === 1) {        // Positive
+                summaryStats.correct_positive = correctCount;
+                summaryStats.sumRT_cognitive_pos = sumCognitiveRT;
+                summaryStats.trialCount_pos = trialsArray.length;
+            } else if (blockConditionCode === 2) {  // Negative
+                summaryStats.correct_negative = correctCount;
+                summaryStats.sumRT_cognitive_neg = sumCognitiveRT;
+                summaryStats.trialCount_neg = trialsArray.length;
+            } else if (blockConditionCode === 3) {  // Neutral
+                summaryStats.correct_neutral = correctCount;
+                summaryStats.sumRT_cognitive_neu = sumCognitiveRT;
+                summaryStats.trialCount_neu = trialsArray.length;
+            } else if (blockConditionCode === 0) {  // practice, no summary needed
+                // ignore for final stats
+            }
+        }
+        
+        // ----- Download raw data CSV (includes all component timing columns) -----
+        function downloadRawCSV() {
+            if (!experimentData.length) return;
+            const headers = [
+                "subjectId", "blockName", "blockCode", "trialNum", "word", "colorName",
+                "targetKey", "responseKey", "responseColor", "correct",
+                "cognitiveRT_ms", "stimulusDisplayLatency_ms", "registrationDelay_ms", "totalMeasuredRT_ms",
+                "conditionCode"
+            ];
+            const csvRows = [headers.join(",")];
+            for (const row of experimentData) {
+                const values = headers.map(h => {
+                    let val = row[h];
+                    if (val === undefined || val === null) val = "";
+                    return JSON.stringify(val);
+                });
+                csvRows.push(values.join(","));
+            }
+            const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+            const link = document.createElement("a");
+            const filename = `SportEmotionalStroop_timing_subj${subjectId}_${new Date().toISOString().slice(0,19)}.csv`;
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+        
+        // ----- Show final summary and provide download button for raw data -----
+        function showCompletionScreen() {
+            // compute summary stats for display
+            const meanRT_neu = summaryStats.correct_neutral > 0 ? summaryStats.sumRT_cognitive_neu / summaryStats.correct_neutral : 0;
+            const meanRT_neg = summaryStats.correct_negative > 0 ? summaryStats.sumRT_cognitive_neg / summaryStats.correct_negative : 0;
+            const meanRT_pos = summaryStats.correct_positive > 0 ? summaryStats.sumRT_cognitive_pos / summaryStats.correct_positive : 0;
+            
+            const percCorrect_neu = summaryStats.trialCount_neu ? (summaryStats.correct_neutral / summaryStats.trialCount_neu) * 100 : 0;
+            const percCorrect_neg = summaryStats.trialCount_neg ? (summaryStats.correct_negative / summaryStats.trialCount_neg) * 100 : 0;
+            const percCorrect_pos = summaryStats.trialCount_pos ? (summaryStats.correct_positive / summaryStats.trialCount_pos) * 100 : 0;
+            
+            const bias_neg = meanRT_neg - meanRT_neu;
+            const bias_pos = meanRT_pos - meanRT_neu;
+            
+            clearContainer();
+            const div = document.createElement("div");
+            div.className = "instructions";
+            div.innerHTML = `
+                <h2>✅ Experiment Complete!</h2>
+                <p><strong>Subject ID: ${subjectId}</strong></p>
+                <p><strong>Accuracy (cognitive responses):</strong><br>
+                Neutral: ${percCorrect_neu.toFixed(1)}% (${summaryStats.correct_neutral}/${summaryStats.trialCount_neu})<br>
+                Negative: ${percCorrect_neg.toFixed(1)}% (${summaryStats.correct_negative}/${summaryStats.trialCount_neg})<br>
+                Positive: ${percCorrect_pos.toFixed(1)}% (${summaryStats.correct_positive}/${summaryStats.trialCount_pos})
+                </p>
+                <p><strong>Mean Cognitive RT (correct trials, ms):</strong><br>
+                Neutral: ${meanRT_neu.toFixed(0)} ms<br>
+                Negative: ${meanRT_neg.toFixed(0)} ms<br>
+                Positive: ${meanRT_pos.toFixed(0)} ms
+                </p>
+                <p><strong>Bias Scores (ms):</strong><br>
+                Negative Bias: ${bias_neg.toFixed(0)} ms &nbsp;&nbsp; Positive Bias: ${bias_pos.toFixed(0)} ms
+                </p>
+                <p><em>Component latencies (stimulus display & registration delay) recorded per trial.</em></p>
+                <button id="downloadRawBtn">📥 Download Raw Data (CSV) with Component Timing</button>
+            `;
+            container.appendChild(div);
+            document.getElementById("downloadRawBtn").addEventListener("click", () => downloadRawCSV());
+        }
+        
+        // ----- BUILD PRACTICE AND TEST BLOCKS -----
+        async function runExperiment() {
+            // 1. Subject ID
+            await new Promise(resolve => askSubjectId(resolve));
+            
+            // 2. Practice instructions
+            await new Promise(resolve => showInstructions(`
+                <h2>📘 Practice Session</h2>
+                <p>You will see number words ("one", "two") presented in different colors.</p>
+                <p><strong>Ignore the word meaning. Press the key matching the COLOR of the word.</strong></p>
+                <p style="font-weight:bold;">Response mapping:</p>
+                <p style="color:red">D → RED</p>
+                <p style="color:#4CAF50">F → GREEN</p>
+                <p style="color:blue">J → BLUE</p>
+                <p style="color:goldenrod">K → YELLOW</p>
+                <p>Respond quickly but accurately. After an error, an "X" appears.</p>
+            `, resolve));
+            
+            // Build practice trials: each practice word appears once, random color
+            let practiceTrials = [];
+            for (let word of practiceWords) {
+                const randIdx = Math.floor(Math.random() * displayColors.length);
+                practiceTrials.push({
+                    word: word,
+                    displayColor: displayColors[randIdx],
+                    colorName: colorNamesArr[randIdx],
+                    conditionCode: 0,
+                    conditionName: "practice",
+                    targetKey: Object.keys(CONFIG.colorNameMap).find(key => CONFIG.colorNameMap[key] === colorNamesArr[randIdx])
+                });
+            }
+            practiceTrials = shuffleArray(practiceTrials);
+            
+            await new Promise(resolve => showReadyScreen(resolve));
+            await runBlock(practiceTrials, "Practice", 0);
+            
+            // Test instructions
+            await new Promise(resolve => showInstructions(`
+                <h2>🧠 Test Session</h2>
+                <p>Now you will see sport-related words (Positive, Negative, Neutral).</p>
+                <p>Again, respond to the <strong>INK COLOR</strong> as quickly and accurately as possible.</p>
+                <p>The experiment consists of three blocks in random order. You may rest briefly between blocks.</p>
+                <p>Press SPACE BAR when ready.</p>
+            `, resolve));
+            
+            // Create test trials for three conditions (balanced: 20 words × 4 colors = 80 trials per block)
+            const positiveTrials = createTrials(positiveWords, 1, "Positive");
+            const negativeTrials = createTrials(negativeWords, 2, "Negative");
+            const neutralTrials = createTrials(neutralWords, 3, "Neutral");
+            
+            // Randomize block order (noreplace)
+            const blockOrder = shuffleArray([
+                { trials: positiveTrials, name: "Positive Words", code: 1 },
+                { trials: negativeTrials, name: "Negative Words", code: 2 },
+                { trials: neutralTrials, name: "Neutral Words", code: 3 }
+            ]);
+            
+            for (let i = 0; i < blockOrder.length; i++) {
+                const block = blockOrder[i];
+                summaryStats.condition = block.code;
+                await new Promise(resolve => showInstructions(`<h3>Block ${i+1} of 3: ${block.name}</h3><p>Press SPACE BAR to begin this block.</p>`, resolve));
+                await new Promise(resolve => showReadyScreen(resolve));
+                await runBlock(block.trials, block.name, block.code);
+                if (i < blockOrder.length - 1) {
+                    await new Promise(resolve => showInstructions(`<h3>✅ Block ${i+1} complete!</h3><p>Take a short break. Press SPACE BAR for the next block.</p>`, resolve));
+                }
+            }
+            
+            summaryStats.completed = 1;
+            showCompletionScreen();
+        }
+        
+        // Start experiment
+        runExperiment().catch(console.error);
+    })();
+</script>
+</body>
+</html>
